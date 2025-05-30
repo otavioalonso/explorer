@@ -58,6 +58,59 @@ window.addEventListener("keyup", (e) => {
     needsRedraw = true; // Ensure redraw on key release for responsive stop
 });
 
+// Mobile Touch Controls
+function handleTouch(event) {
+    event.preventDefault(); // Prevent default touch actions like scrolling or zooming
+    needsRedraw = true;
+
+    // Reset all arrow keys before processing current touches
+    keys["ArrowUp"] = false;
+    keys["ArrowDown"] = false;
+    keys["ArrowLeft"] = false;
+    keys["ArrowRight"] = false;
+
+    if (event.touches.length > 0) {
+        // Consider the first touch point for simplicity
+        const touch = event.touches[0];
+        const rect = canvas.getBoundingClientRect(); // Get canvas position and size
+        const touchX = touch.clientX - rect.left;
+        const touchY = touch.clientY - rect.top;
+
+        const touchMargin = 40;
+
+        const charScreenX = character.x * zoomFactor - camX;
+        const charScreenY = character.y * zoomFactor - camY;
+
+        if (touchY + touchMargin < charScreenY) { // Top
+            keys["ArrowUp"] = true;
+        } else if (touchY > charScreenY + touchMargin) { // Bottom
+            keys["ArrowDown"] = true;
+        }
+
+        if (touchX + touchMargin < charScreenX) { // Left
+            keys["ArrowLeft"] = true;
+        } else if (touchX > charScreenX + touchMargin) { // Right
+            keys["ArrowRight"] = true;
+        }
+    }
+}
+
+function handleTouchEnd(event) {
+    event.preventDefault();
+    // Clear all movement keys when touch ends
+    keys["ArrowUp"] = false;
+    keys["ArrowDown"] = false;
+    keys["ArrowLeft"] = false;
+    keys["ArrowRight"] = false;
+    needsRedraw = true;
+}
+
+// Add touch event listeners to the canvas
+canvas.addEventListener("touchstart", handleTouch, { passive: false });
+canvas.addEventListener("touchmove", handleTouch, { passive: false });
+canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
+canvas.addEventListener("touchcancel", handleTouchEnd, { passive: false }); // Handle cases like when the touch is interrupted
+
 function updateCameraPosition() {
     if (!mapImage.complete || !charSprite.complete) return; // Ensure images are loaded
 
