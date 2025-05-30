@@ -55,9 +55,7 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
     keys[e.key] = false;
-    // Optional: you might want to set needsRedraw = true here as well,
-    // if releasing a key should also trigger a redraw (e.g., character stops moving)
-    // For now, we'll only redraw on keydown to reduce computations.
+    needsRedraw = true; // Ensure redraw on key release for responsive stop
 });
 
 function updateCameraPosition() {
@@ -98,37 +96,146 @@ function updateCameraPosition() {
 }
 
 function update() {
-   if (keys["ArrowUp"]) character.y -= character.speed;
-   if (keys["ArrowDown"]) character.y += character.speed;
-   if (keys["ArrowLeft"]) character.x -= character.speed;
-   if (keys["ArrowRight"]) character.x += character.speed;
+   const oldX = character.x;
+   const oldY = character.y;
 
-   // Clamp character to map boundaries (optional, but good practice)
-   if (mapImage.complete && charSprite.complete) {
+   let attemptedX = oldX;
+   let attemptedY = oldY;
+
+   if (keys["ArrowUp"]) attemptedY -= character.speed;
+   if (keys["ArrowDown"]) attemptedY += character.speed;
+   if (keys["ArrowLeft"]) attemptedX -= character.speed;
+   if (keys["ArrowRight"]) attemptedX += character.speed;
+
+   // Call handleCollisions before clamping to map boundaries
+   // It will update character.x and character.y directly
+   if (collisionMapImage.complete && charSprite.complete && charSprite.width > 0 && charSprite.height > 0) {
+       handleCollisions(oldX, oldY, attemptedX, attemptedY);
+   } else {
+       // If collision data not ready, or sprite dimensions unknown, allow movement if attempted
+       if (attemptedX !== oldX || attemptedY !== oldY) {
+            character.x = attemptedX;
+            character.y = attemptedY;
+       }
+   }
+
+   // Clamp character to map boundaries
+   if (mapImage.complete && charSprite.complete && charSprite.width > 0 && charSprite.height > 0) {
       character.x = Math.max(0, Math.min(character.x, mapImage.width - charSprite.width));
       character.y = Math.max(0, Math.min(character.y, mapImage.height - charSprite.height));
    }
 
    updateCameraPosition();
-   handleCollisions();
-   needsRedraw = true; // Character moved, so a redraw is needed
+   needsRedraw = true; // Character moved or attempted to move, so a redraw is needed
 }
 
-function handleCollisions() {
-    // Sample from the offscreen collision canvas using original map coordinates and character size
-    const imageData = collisionCtx.getImageData(character.x, character.y, charSprite.width, charSprite.height);
-    const pixels = imageData.data;
+function handleCollisions(oldX, oldY, attemptedX, attemptedY) {
+    // Helper function to check for collision at a given position
+    function isCollidingAt(x, y) {
+        // Assumes charSprite.width and charSprite.height are > 0
+        const charWidth = charSprite.width;
+        const charHeight = charSprite.height;
 
-    for (let i = 0; i < pixels.length; i += 4) {
-        // If pixel is black, revert the movement
-        if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0) {
-            if (keys["ArrowUp"]) character.y += character.speed;
-            if (keys["ArrowDown"]) character.y -= character.speed;
-            if (keys["ArrowLeft"]) character.x += character.speed;
-            if (keys["ArrowRight"]) character.x -= character.speed;
-            break;
+        const checkX = Math.floor(x);
+        const checkY = Math.floor(y);
+
+        const mapWidth = collisionCanvas.width;
+        const mapHeight = collisionCanvas.height;
+
+        const readStartX = Math.max(0, checkX);
+        const readStartY = Math.max(0, checkY);
+        const readEndX = Math.min(mapWidth, checkX + charWidth);
+        const readEndY = Math.min(mapHeight, checkY + charHeight);
+
+        const readWidth = readEndX - readStartX;
+        const readHeight = readEndY - readStartY;
+
+        if (readWidth <= 0 || readHeight <= 0) {
+            return false; 
+        }
+        
+        const imageData = collisionCtx.getImageData(readStartX, readStartY, readWidth, readHeight);
+        const pixels = imageData.data;
+
+        for (let i = 0; i < pixels.length; i += 4) {
+            // If pixel is black (R=0, G=0, B=0) and not fully transparent, it's a collision
+            if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0 && pixels[i+3] > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    let finalX = attemptedX;
+    let finalY = attemptedY;
+
+    // If no movement was actually attempted, no need for complex collision logic
+    if (oldX === attemptedX && oldY === attemptedY) {
+        // Check if current position is colliding (e.g. spawned in wall)
+        if (isCollidingAt(oldX, oldY)) {
+            // This part is tricky: if spawned in a wall, there's no "non-colliding" spot to revert to.
+            // For now, just stay put. A more advanced solution might try to push the character out.
+            character.x = oldX;
+            character.y = oldY;
+        } else {
+            character.x = oldX; // No movement, no collision
+            character.y = oldY;
+        }
+        return;
+    }
+
+    if (isCollidingAt(attemptedX, attemptedY)) { // Full move results in collision
+        const movedInX = (attemptedX !== oldX);
+        const movedInY = (attemptedY !== oldY);
+
+        let canSlideOnX = false;
+        if (movedInX) {
+            canSlideOnX = !isCollidingAt(attemptedX, oldY);
+        }
+
+        let canSlideOnY = false;
+        if (movedInY) {
+            canSlideOnY = !isCollidingAt(oldX, attemptedY);
+        }
+
+        if (movedInX && movedInY) { // Diagonal movement attempt
+            if (canSlideOnX && canSlideOnY) {
+                // Both slides are independently possible, but diagonal is blocked (e.g. hitting corner tip).
+                // Revert to original position to prevent weird corner behavior or getting stuck.
+                finalX = oldX;
+                finalY = oldY;
+            } else if (canSlideOnX) {
+                finalX = attemptedX; // Slide along X
+                finalY = oldY;
+            } else if (canSlideOnY) {
+                finalX = oldX;       // Slide along Y
+                finalY = attemptedY;
+            } else {
+                finalX = oldX;       // Cannot slide in either direction
+                finalY = oldY;
+            }
+        } else if (movedInX) { // Horizontal-only movement attempt that collided
+            // If it collided, (attemptedX, oldY) is the colliding point.
+            // So canSlideOnX (which checks !isCollidingAt(attemptedX, oldY)) would be false.
+            // Character should not move.
+            finalX = oldX;
+            finalY = oldY; // Y was already oldY
+        } else if (movedInY) { // Vertical-only movement attempt that collided
+            // Similar to horizontal, canSlideOnY would be false.
+            finalX = oldX; // X was already oldX
+            finalY = oldY;
+        } else {
+            // This case implies oldX === attemptedX && oldY === attemptedY,
+            // but that's handled by the early return.
+            // If somehow reached, means current spot is colliding.
+            finalX = oldX;
+            finalY = oldY;
         }
     }
+    // If no collision with (attemptedX, attemptedY), finalX and finalY are already set correctly.
+
+    character.x = finalX;
+    character.y = finalY;
 }
 
 function draw() {
