@@ -9,8 +9,9 @@ const character = {
 
 const zoomFactor = 4;
 
-let camX = 0; // camera position
-let camY = 0; // camera position
+// camera position
+let camX = 0; 
+let camY = 0;
 
 // fractional margin from edge before camera moves
 const deadZoneMarginFactor = 0.25;
@@ -28,7 +29,6 @@ charSprite.src = 'char.png';
 const collisionCanvas = document.createElement('canvas');
 const collisionCtx = collisionCanvas.getContext('2d', { willReadFrequently: true });
 
-// Function to resize canvas
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -39,31 +39,24 @@ function resizeCanvas() {
     }
 }
 
-// Initial resize
 resizeCanvas();
 
 // Resize canvas when window size changes
 window.addEventListener('resize', resizeCanvas);
 
 const keys = {};
-let needsRedraw = true; // Flag to indicate if a redraw is needed
+let needsRedraw = true;
+let lastTime = 0; // Added to track time for delta time calculation
 
 window.addEventListener("keydown", (e) => {
     keys[e.key] = true;
-    needsRedraw = true; // Set flag when a key is pressed
+    needsRedraw = true;
 });
 
 window.addEventListener("keyup", (e) => {
     keys[e.key] = false;
-    needsRedraw = true; // Ensure redraw on key release for responsive stop
+    needsRedraw = true;
 });
-
-// Remove old touch control functions and listeners
-// canvas.addEventListener("touchstart", handleTouch, { passive: false });
-// canvas.addEventListener("touchmove", handleTouch, { passive: false });
-// canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
-// canvas.addEventListener("touchcancel", handleTouchEnd, { passive: false });
-
 
 // Joystick Controls
 const joystickBase = document.getElementById('joystickBase');
@@ -183,17 +176,30 @@ function updateCameraPosition() {
     camY = Math.max(0, Math.min(camY, maxCamY));
 }
 
-function update() {
+function update(dt) {
    const oldX = character.x;
    const oldY = character.y;
 
+   let dX = 0;
+   let dY = 0;
+
+   if (keys["ArrowUp"]) dY -= 1;
+   if (keys["ArrowDown"]) dY += 1;
+   if (keys["ArrowLeft"]) dX -= 1;
+   if (keys["ArrowRight"]) dX += 1;
+
    let attemptedX = oldX;
    let attemptedY = oldY;
+   const baseSpeed = character.speed * dt * 60;
 
-   if (keys["ArrowUp"]) attemptedY -= character.speed;
-   if (keys["ArrowDown"]) attemptedY += character.speed;
-   if (keys["ArrowLeft"]) attemptedX -= character.speed;
-   if (keys["ArrowRight"]) attemptedX += character.speed;
+   if (dX !== 0 && dY !== 0) { // Diagonal movement
+       const normalizedSpeed = baseSpeed / Math.sqrt(2);
+       attemptedX += dX * normalizedSpeed;
+       attemptedY += dY * normalizedSpeed;
+   } else { // Axial or no movement (dX or dY could be 0)
+       attemptedX += dX * baseSpeed;
+       attemptedY += dY * baseSpeed;
+   }
 
    // Call handleCollisions before clamping to map boundaries
    // It will update character.x and character.y directly
@@ -357,9 +363,12 @@ function draw() {
     needsRedraw = false;
 }
 
-function gameLoop(now) {
+function gameLoop(now) { // 'now' is the current time provided by requestAnimationFrame
    requestAnimationFrame(gameLoop);
-   update();
+   const dt = (now - (lastTime || now)) / 1000; // Calculate delta time in seconds, handle first frame
+   lastTime = now;
+
+   update(dt); // Pass dt to update
    if (needsRedraw) draw();
 }
 
@@ -373,7 +382,7 @@ mapImage.onload = () => {
         charSprite.onload = () => {
             resizeCanvas(); // This will call updateCameraPosition and draw
             needsRedraw = true; // Ensure initial draw
-            // then = performance.now(); // Initialize 'then' before starting the loop - moved initialization into gameLoop
+            lastTime = performance.now(); // Initialize lastTime before starting the loop
             requestAnimationFrame(gameLoop); // Start the loop
         };
         // Handle if character image was already cached and loaded
