@@ -58,58 +58,93 @@ window.addEventListener("keyup", (e) => {
     needsRedraw = true; // Ensure redraw on key release for responsive stop
 });
 
-// Mobile Touch Controls
-function handleTouch(event) {
-    event.preventDefault(); // Prevent default touch actions like scrolling or zooming
-    needsRedraw = true;
+// Remove old touch control functions and listeners
+// canvas.addEventListener("touchstart", handleTouch, { passive: false });
+// canvas.addEventListener("touchmove", handleTouch, { passive: false });
+// canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
+// canvas.addEventListener("touchcancel", handleTouchEnd, { passive: false });
 
-    // Reset all arrow keys before processing current touches
-    keys["ArrowUp"] = false;
-    keys["ArrowDown"] = false;
-    keys["ArrowLeft"] = false;
-    keys["ArrowRight"] = false;
 
-    if (event.touches.length > 0) {
-        // Consider the first touch point for simplicity
+// Joystick Controls
+const joystickBase = document.getElementById('joystickBase');
+const joystickKnob = document.getElementById('joystickKnob');
+let joystickActive = false;
+let joystickStartX = 0;
+let joystickStartY = 0;
+const joystickMaxDistance = joystickBase.offsetWidth / 2 - joystickKnob.offsetWidth / 2; // Max distance knob can move
+
+if (joystickBase && joystickKnob) {
+    joystickKnob.addEventListener('touchstart', (event) => {
+        event.preventDefault();
+        joystickActive = true;
         const touch = event.touches[0];
-        const rect = canvas.getBoundingClientRect(); // Get canvas position and size
-        const touchX = touch.clientX - rect.left;
-        const touchY = touch.clientY - rect.top;
+        joystickStartX = touch.clientX;
+        joystickStartY = touch.clientY;
+        needsRedraw = true;
+    }, { passive: false });
 
-        const touchMargin = 40;
+    document.addEventListener('touchmove', (event) => {
+        if (!joystickActive) return;
+        event.preventDefault();
+        needsRedraw = true;
+        const touch = event.touches[0];
+        let deltaX = touch.clientX - joystickStartX;
+        let deltaY = touch.clientY - joystickStartY;
 
-        const charScreenX = character.x * zoomFactor - camX;
-        const charScreenY = character.y * zoomFactor - camY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const angle = Math.atan2(deltaY, deltaX);
 
-        if (touchY + touchMargin < charScreenY) { // Top
-            keys["ArrowUp"] = true;
-        } else if (touchY > charScreenY + touchMargin) { // Bottom
-            keys["ArrowDown"] = true;
+        if (distance > joystickMaxDistance) {
+            deltaX = Math.cos(angle) * joystickMaxDistance;
+            deltaY = Math.sin(angle) * joystickMaxDistance;
         }
 
-        if (touchX + touchMargin < charScreenX) { // Left
-            keys["ArrowLeft"] = true;
-        } else if (touchX > charScreenX + touchMargin) { // Right
-            keys["ArrowRight"] = true;
+        joystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+        // Reset keys
+        keys["ArrowUp"] = false;
+        keys["ArrowDown"] = false;
+        keys["ArrowLeft"] = false;
+        keys["ArrowRight"] = false;
+
+        // Determine direction based on angle and distance
+        const threshold = joystickMaxDistance * 0.3; // 30% of max distance to activate
+        if (distance > threshold) {
+            const angleDeg = angle * 180 / Math.PI;
+            const angleMargin = 22.5; // Margin for direction detection
+            if (angleDeg > -135 - angleMargin && angleDeg < -45 + angleMargin) keys["ArrowUp"] = true;
+            if (angleDeg > 45 - angleMargin && angleDeg < 135 + angleMargin) keys["ArrowDown"] = true;
+            if (angleDeg > -45 - angleMargin && angleDeg < 45 + angleMargin) keys["ArrowRight"] = true;
+            if (angleDeg < -135 + angleMargin || angleDeg > 135 - angleMargin) keys["ArrowLeft"] = true;
         }
-    }
+
+    }, { passive: false });
+
+    document.addEventListener('touchend', (event) => {
+        if (!joystickActive) return;
+        event.preventDefault();
+        joystickActive = false;
+        joystickKnob.style.transform = `translate(0px, 0px)`; // Reset knob position
+        keys["ArrowUp"] = false;
+        keys["ArrowDown"] = false;
+        keys["ArrowLeft"] = false;
+        keys["ArrowRight"] = false;
+        needsRedraw = true;
+    }, { passive: false });
+
+    document.addEventListener('touchcancel', (event) => {
+        if (!joystickActive) return;
+        event.preventDefault();
+        joystickActive = false;
+        joystickKnob.style.transform = `translate(0px, 0px)`;
+        keys["ArrowUp"] = false;
+        keys["ArrowDown"] = false;
+        keys["ArrowLeft"] = false;
+        keys["ArrowRight"] = false;
+        needsRedraw = true;
+    }, { passive: false });
 }
 
-function handleTouchEnd(event) {
-    event.preventDefault();
-    // Clear all movement keys when touch ends
-    keys["ArrowUp"] = false;
-    keys["ArrowDown"] = false;
-    keys["ArrowLeft"] = false;
-    keys["ArrowRight"] = false;
-    needsRedraw = true;
-}
-
-// Add touch event listeners to the canvas
-canvas.addEventListener("touchstart", handleTouch, { passive: false });
-canvas.addEventListener("touchmove", handleTouch, { passive: false });
-canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
-canvas.addEventListener("touchcancel", handleTouchEnd, { passive: false }); // Handle cases like when the touch is interrupted
 
 function updateCameraPosition() {
     if (!mapImage.complete || !charSprite.complete) return; // Ensure images are loaded
