@@ -2,16 +2,17 @@ const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
 const character = {
-   x: 200,
-   y: 300,
-   speed: 1
+   x: 32,
+   y: 258,
+   speed: 1,
+   direction: 'right'
 };
 
-const zoomFactor = 4;
+const zoomFactor = 6;
 
 // camera position
-let camX = 0; 
-let camY = 0;
+let camX = 256; 
+let camY = 256;
 
 // fractional margin from edge before camera moves
 const deadZoneMarginFactor = 0.25;
@@ -185,8 +186,14 @@ function update(dt) {
 
    if (keys["ArrowUp"]) dY -= 1;
    if (keys["ArrowDown"]) dY += 1;
-   if (keys["ArrowLeft"]) dX -= 1;
-   if (keys["ArrowRight"]) dX += 1;
+   if (keys["ArrowLeft"]) {
+       dX -= 1;
+       character.direction = 'left';
+   }
+   if (keys["ArrowRight"]) {
+       dX += 1;
+       character.direction = 'right';
+   }
 
    let attemptedX = oldX;
    let attemptedY = oldY;
@@ -350,14 +357,27 @@ function draw() {
 
     ctx.drawImage(mapImage, 0, 0, mapImage.width * zoomFactor, mapImage.height * zoomFactor);
 
-    // Draw the character, scaled and at scaled position
-    ctx.drawImage(
-        charSprite,
-        character.x * zoomFactor,
-        character.y * zoomFactor,
-        charSprite.width * zoomFactor,
-        charSprite.height * zoomFactor
-    );
+    // Draw the character, flipping if necessary
+    ctx.save();
+    if (character.direction === 'left') {
+        ctx.scale(-1, 1);
+        ctx.drawImage(
+            charSprite,
+            -character.x * zoomFactor - (charSprite.width * zoomFactor),
+            character.y * zoomFactor,
+            charSprite.width * zoomFactor,
+            charSprite.height * zoomFactor
+        );
+    } else {
+        ctx.drawImage(
+            charSprite,
+            character.x * zoomFactor,
+            character.y * zoomFactor,
+            charSprite.width * zoomFactor,
+            charSprite.height * zoomFactor
+        );
+    }
+    ctx.restore();
 
     ctx.restore();
     needsRedraw = false;
